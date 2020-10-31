@@ -50,7 +50,7 @@ func NewMetaLogger(kfmdClient storepb.MetadataStoreServiceClient, gvk schema.Gro
 		resource:   gvk,
 		kfmdClient: kfmdClient,
 	}
-	resourceExecutionType := mlpb.ExecutionType{
+	resourceArtifactType := mlpb.ArtifactType{
 		Name: proto.String(l.MetadataArtifactType()),
 		Properties: map[string]mlpb.PropertyType{
 			// same as metav1.Object.Name
@@ -63,13 +63,13 @@ func NewMetaLogger(kfmdClient storepb.MetadataStoreServiceClient, gvk schema.Gro
 			"object": mlpb.PropertyType_STRING,
 		},
 	}
-	request := storepb.PutExecutionTypeRequest{
-		ArtifactType:   &resourceExecutionType,
+	request := storepb.PutArtifactTypeRequest{
+		ArtifactType:   &resourceArtifactType,
 		AllFieldsMatch: proto.Bool(true),
 	}
-	resp, err := kfmdClient.PutExecutionType(context.Background(), &request)
+	resp, err := kfmdClient.PutArtifactType(context.Background(), &request)
 	if err != nil {
-		return l, fmt.Errorf("failed to create execution type: err = %v; request = %v; response = %v", err, request, resp)
+		return l, fmt.Errorf("failed to create artifact type: err = %v; request = %v; response = %v", err, request, resp)
 	}
 	l.typeID = resp.GetTypeId()
 	return l, nil
@@ -108,7 +108,7 @@ func (l *MetaLogger) OnAdd(obj interface{}) error {
 		klog.Errorf("failed to convert %s object to bytes: %s", l.MetadataArtifactType(), err)
 		return err
 	}
-	execution := mlpb.Execution{
+	artifact := mlpb.Artifact{
 		TypeId: proto.Int64(l.typeID),
 		Uri:    proto.String(object.GetSelfLink()),
 		Properties: map[string]*mlpb.Value{
@@ -122,10 +122,10 @@ func (l *MetaLogger) OnAdd(obj interface{}) error {
 			"__kf_workspace__": mlpbStringValue(workspace),
 		},
 	}
-	request := storepb.PutExecutionsRequest{
-		Artifacts: []*mlpb.Execution{&execution},
+	request := storepb.PutArtifactsRequest{
+		Artifacts: []*mlpb.Artifact{&artifact},
 	}
-	resp, err := l.kfmdClient.PutExecutions(context.Background(), &request)
+	resp, err := l.kfmdClient.PutArtifacts(context.Background(), &request)
 	if err != nil {
 		klog.Errorf("failed to log metadata for %s: err = %s, request = %v, resp = %v", l.MetadataArtifactType(), err, request, resp)
 		return err
@@ -153,15 +153,15 @@ func (l *MetaLogger) OnDelete(obj interface{}) error {
 }
 
 func (l *MetaLogger) ifExists(uid types.UID) (bool, error) {
-	request := storepb.GetExecutionsByTypeRequest{
+	request := storepb.GetArtifactsByTypeRequest{
 		TypeName: proto.String(l.MetadataArtifactType()),
 	}
-	resp, err := l.kfmdClient.GetExecutionsByType(context.Background(), &request)
+	resp, err := l.kfmdClient.GetArtifactsByType(context.Background(), &request)
 	if err != nil {
 		return false, fmt.Errorf("failed to get list of artifacts for %s: err = %s, request = %v, response = %v", l.MetadataArtifactType(), err, request, resp)
 	}
-	for _, execution := range resp.Executions {
-		if execution.Properties["version"].GetStringValue() == string(uid) {
+	for _, artifact := range resp.Artifacts {
+		if artifact.Properties["version"].GetStringValue() == string(uid) {
 			return true, nil
 		}
 	}
